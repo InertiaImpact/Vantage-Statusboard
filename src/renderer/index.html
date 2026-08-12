@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Vantage Statusboard</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-bar">
+    <div class="drag-region brand-block">
+      <div class="brand-mark" aria-hidden="true">V</div>
+      <h1>Vantage Workflow Status</h1>
+    </div>
+
+    <div class="app-status" id="connectionState" data-state="loading">
+      <span class="state-dot" aria-hidden="true"></span>
+      <div><strong id="connectionTitle">Connecting</strong><span class="server-line" id="connectionServer">Server not configured</span><span id="connectionDetail">Starting status service…</span></div>
+    </div>
+
+    <nav class="window-actions" aria-label="Application controls">
+      <button class="icon-button desktop-only" id="lockButton" type="button" title="Lock window position and size" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8H4v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 1 0-6 0v2Zm3 3a2 2 0 0 0-1 3.73V18h2v-1.27A2 2 0 0 0 12 13Z"/></svg>
+      </button>
+      <button class="icon-button desktop-only" id="pinButton" type="button" title="Keep window on top" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-2 2-1-1-4 4 .5 3.5-1.5 1.5-3.5-.5-4 4-1.5-1.5 4-4-.5-3.5L9 11l3.5.5 4-4-1-1 1.5-1.5-1-1Z"/></svg>
+      </button>
+      <button class="icon-button" id="refreshButton" type="button" title="Refresh now">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.35 3.35Z"/></svg>
+      </button>
+      <button class="icon-button settings-trigger desktop-only" id="settingsButton" type="button" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.62-.94L14.87 3h-3.84l-.36 3.18c-.59.24-1.13.56-1.63.94l-2.38-.96-1.92 3.32 2.03 1.58c-.05.31-.08.65-.08.94s.03.63.08.94l-2.03 1.58 1.92 3.32 2.38-.96c.5.38 1.05.7 1.63.94l.36 3.18h3.84l.36-3.18c.59-.24 1.13-.56 1.62-.94l2.39.96 1.92-3.32-2.02-1.58ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+      </button>
+      <span class="window-divider desktop-only" aria-hidden="true"></span>
+      <button class="icon-button desktop-only" id="minimizeButton" type="button" title="Minimize">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg>
+      </button>
+      <button class="icon-button close-button desktop-only" id="closeButton" type="button" title="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="summary-grid" id="summaryGrid" aria-label="Job summary" hidden>
+      <article class="summary-card active"><span>In progress</span><strong id="activeCount">—</strong><small>processing now</small></article>
+      <article class="summary-card waiting"><span>Waiting</span><strong id="waitingCount">—</strong><small>queued for service</small></article>
+      <article class="summary-card issue"><span>Needs attention</span><strong id="issueCount">—</strong><small>failed or stopped</small></article>
+      <article class="summary-card total"><span>Shown</span><strong id="shownCount">—</strong><small>after filters</small></article>
+    </section>
+
+    <section id="notice" class="notice" hidden></section>
+
+    <section class="board-shell">
+      <div class="column-heading" aria-hidden="true"><span>Status and job</span><span>Progress</span><span>Estimated</span><span>Timing</span></div>
+      <div class="job-list" id="jobList">
+        <div class="empty-state"><div class="empty-ring"></div><strong>Connecting to Vantage</strong><span>Current jobs will appear here.</span></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="scrim" id="settingsScrim" hidden></div>
+  <aside class="settings-drawer" id="settingsDrawer" aria-hidden="true" aria-labelledby="settingsTitle">
+    <header class="drawer-header">
+      <div><p class="overline">Application</p><h2 id="settingsTitle">Settings</h2></div>
+      <button class="icon-button" id="closeSettingsButton" type="button" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
+      </button>
+    </header>
+
+    <form id="settingsForm">
+      <div class="settings-scroll">
+      <section class="settings-section">
+        <h3>Vantage connection</h3>
+        <p class="section-help">Enter a server name or a complete HTTP/HTTPS URL.</p>
+        <label class="field span-two"><span>Server or URL</span><input id="serverInput" required placeholder="SERVER-NAME.test.local"></label>
+        <label class="field"><span>REST port</span><input id="vantagePortInput" type="number" min="1" max="65535" value="8676"></label>
+        <label class="field"><span>Authentication</span><select id="authTypeInput"><option value="none">None</option><option value="basic">Username and password</option><option value="bearer">Bearer token</option><option value="apikey">API key</option></select></label>
+        <label class="field auth-basic"><span>Username</span><input id="usernameInput" autocomplete="username"></label>
+        <label class="field auth-basic"><span>Password</span><input id="passwordInput" type="password" autocomplete="current-password" placeholder="Leave blank to keep saved value"></label>
+        <label class="field auth-token span-two"><span>Token / API key</span><input id="tokenInput" type="password" autocomplete="off" placeholder="Leave blank to keep saved value"></label>
+        <label class="field auth-apikey span-two"><span>API key header</span><input id="apiKeyHeaderInput" value="X-Api-Key"></label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Status board</h3>
+        <div class="field span-two"><span>Workflows</span><details class="workflow-picker" id="workflowPicker"><summary><span id="workflowSummary">All workflows</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5H7Z"/></svg></summary><div class="workflow-menu"><div class="workflow-menu-header"><span>Select any combination</span><button id="workflowAllButton" type="button">Show all</button></div><div class="workflow-options" id="workflowOptions"></div></div></details></div>
+        <label class="field"><span>Jobs shown</span><select id="viewInput"><option value="current">Current jobs</option><option value="recent">Current and recent complete</option><option value="all">All returned jobs</option></select></label>
+        <label class="field"><span>Refresh every</span><div class="suffix-input"><input id="refreshInput" type="number" min="5" max="3600"><span>sec</span></div></label>
+        <label class="field span-two"><span>Search filter</span><input id="searchInput" placeholder="Filename or workflow"></label>
+        <label class="switch-row"><input id="summaryInput" type="checkbox"><span><strong>Show summary counters</strong><small>Display the in-progress, waiting, attention, and shown totals above the job list.</small></span></label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Appearance</h3>
+        <label class="field span-two"><span>Theme</span><select id="themeInput"></select></label>
+        <div class="theme-preview span-two" id="themePreview"></div>
+        <label class="file-button span-two"><input id="themeFileInput" type="file" accept="application/json,.json"><span>Import theme file</span></label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Web interface</h3>
+        <label class="field"><span>Web port</span><input id="webPortInput" type="number" min="1024" max="65535"></label>
+        <label class="switch-row"><input id="lanInput" type="checkbox"><span><strong>Expose to local network</strong><small>Allow other computers to open this dashboard.</small></span></label>
+      </section>
+
+      <section class="settings-section desktop-only">
+        <h3>Windows</h3>
+        <label class="switch-row"><input id="autostartInput" type="checkbox"><span><strong>Start with Windows</strong><small>Open the statusboard when this user signs in.</small></span></label>
+      </section>
+
+      <details class="advanced-settings">
+        <summary>Advanced connection options</summary>
+        <label class="switch-row"><input id="verifyTlsInput" type="checkbox"><span><strong>Verify HTTPS certificate</strong><small>Recommended unless using a trusted self-signed certificate.</small></span></label>
+        <label class="field"><span>Request timeout</span><div class="suffix-input"><input id="timeoutInput" type="number" min="2" max="120"><span>sec</span></div></label>
+      </details>
+
+      <div class="drawer-error" id="settingsError" hidden></div>
+      </div>
+      <footer class="drawer-actions"><button class="text-button" id="cancelSettingsButton" type="button">Cancel</button><button class="primary-button" type="submit">Save settings</button></footer>
+    </form>
+  </aside>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

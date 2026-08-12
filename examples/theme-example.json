@@ -1,0 +1,19 @@
+{
+  "id": "newsroom-neutral",
+  "name": "Newsroom Neutral",
+  "tokens": {
+    "background": "#121212",
+    "surface": "#1c1c1c",
+    "surfaceRaised": "#242424",
+    "border": "#383838",
+    "text": "#f1f1f1",
+    "muted": "#a5a5a5",
+    "primary": "#d0d0d0",
+    "active": "#65a7e8",
+    "waiting": "#d5aa55",
+    "danger": "#df6875",
+    "success": "#70bb82",
+    "radius": "4px",
+    "density": "comfortable"
+  }
+}
