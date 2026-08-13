@@ -12,6 +12,7 @@ const { chromium } = require('C:/Users/bsancken/.cache/codex-runtimes/codex-prim
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:8765', { waitUntil: 'networkidle' });
+  const rowHeights = await page.locator('.job-row').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().height)));
   await page.screenshot({ path: 'visual-board.png', fullPage: true });
   const webSettingsHidden = await page.locator('#settingsButton').evaluate((element) => element.ownerDocument.defaultView.getComputedStyle(element).display === 'none');
   await page.evaluate(() => document.body.classList.add('desktop'));
@@ -49,6 +50,7 @@ const { chromium } = require('C:/Users/bsancken/.cache/codex-runtimes/codex-prim
     && Math.abs((footerAfterScroll.y + footerAfterScroll.height) - 900) < 1);
   result.multiSelectSummary = multiSelectSummary;
   result.webSettingsHidden = webSettingsHidden;
+  result.rowHeights = rowHeights;
   process.stdout.write(JSON.stringify({ result, errors }, null, 2));
   await browser.close();
 })().catch((error) => {

@@ -33,9 +33,16 @@ function statusOrder(job) {
 
 function parseDate(value) {
   if (!value) return null;
-  const serialized = String(value).match(/\/Date\((\d+)/);
-  const date = serialized ? new Date(Number(serialized[1])) : new Date(value);
+  const text = String(value);
+  const serialized = text.match(/\/Date\((\d+)/);
+  const normalized = text.replace(/(\.\d{3})\d+(?=Z$|[+-]\d{2}:?\d{2}$)/, '$1');
+  const date = serialized ? new Date(Number(serialized[1])) : new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function jobRecency(job) {
+  const date = parseDate(job.updated) || parseDate(job.started);
+  return date ? date.getTime() : 0;
 }
 
 function formatClock(value) {
@@ -50,6 +57,18 @@ function formatDuration(value) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)} min`;
+}
+
+function formatEstimate(value) {
+  if (value === null || value === undefined || value === '') return 'Unavailable';
+  const seconds = Math.max(0, Math.round(Number(value)));
+  if (!Number.isFinite(seconds)) return 'Unavailable';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
 function cleanName(value) {
@@ -93,7 +112,10 @@ function visibleJobs() {
     const query = dashboard.search.trim().toLowerCase();
     if (query && ![job.name, job.workflowName, job.state].some((value) => String(value).toLowerCase().includes(query))) return false;
     return true;
-  }).sort((left, right) => statusOrder(left) - statusOrder(right));
+  }).sort((left, right) => statusOrder(left) - statusOrder(right)
+    || jobRecency(right) - jobRecency(left)
+    || left.workflowName.localeCompare(right.workflowName)
+    || left.name.localeCompare(right.name));
 }
 
 function renderStatus() {
@@ -140,12 +162,15 @@ function renderJob(job) {
   const progressAvailable = Number.isFinite(Number(job.progress));
   const progress = complete ? 100 : (progressAvailable ? Math.min(100, Math.max(0, Number(job.progress))) : 0);
   const indeterminate = group === 'active' && !progressAvailable;
-  let estimate = 'Calculating';
-  let estimateLabel = 'estimated remaining';
+  let estimate = 'Unavailable';
+  let estimateLabel = 'not exposed by REST';
   if (complete) { estimate = 'Done'; estimateLabel = 'completed'; }
   else if (group === 'waiting') { estimate = 'Pending'; estimateLabel = 'waiting for service'; }
   else if (group === 'issue') { estimate = 'Stopped'; estimateLabel = 'check Vantage'; }
-  else if (Number.isFinite(Number(job.etaSeconds))) estimate = formatDuration(job.etaSeconds);
+  else if (job.etaSeconds !== null && job.etaSeconds !== undefined && Number.isFinite(Number(job.etaSeconds))) {
+    estimate = formatEstimate(job.etaSeconds);
+    estimateLabel = 'Vantage remaining';
+  }
 
   return `<article class="job-row is-${group}">
     <div class="job-identity"><span class="status-chip">${escapeHtml(job.state)}</span><div class="job-name" title="${escapeHtml(job.name)}">${escapeHtml(cleanName(job.name))}</div><div class="workflow-name">${escapeHtml(job.workflowName)}</div></div>

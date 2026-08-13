@@ -12,7 +12,8 @@
   --danger: #df6875;
   --success: #70bb82;
   --radius: 4px;
-  --row-pad: 20px;
+  --row-pad-x: 20px;
+  --row-pad-y: 13px;
   --app-bar-height: 72px;
   --elevation-1: 0 1px 2px rgba(0, 0, 0, .24);
   font-family: Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -69,27 +70,27 @@ main { height: calc(100vh - var(--app-bar-height)); overflow: auto; padding: 24p
 
 .notice { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--danger); border-radius: var(--radius); background: var(--surface); color: color-mix(in srgb, var(--danger), white 22%); font-size: 11px; }
 .board-shell { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.column-heading { display: grid; grid-template-columns: minmax(300px, 1.25fr) minmax(260px, 1.15fr) minmax(180px, .75fr) minmax(150px, .6fr); gap: 20px; padding: 11px var(--row-pad); border-bottom: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.column-heading { display: grid; grid-template-columns: minmax(300px, 1.25fr) minmax(260px, 1.15fr) minmax(180px, .75fr) minmax(150px, .6fr); gap: 20px; padding: 10px var(--row-pad-x); border-bottom: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
 .job-list { max-height: calc(100vh - 148px); overflow: auto; }
 .show-summary .job-list { max-height: calc(100vh - 238px); }
-.job-row { position: relative; display: grid; grid-template-columns: minmax(300px, 1.25fr) minmax(260px, 1.15fr) minmax(180px, .75fr) minmax(150px, .6fr); gap: 20px; align-items: center; min-height: 110px; padding: var(--row-pad); border-bottom: 1px solid var(--border); background: var(--surface); transition: background .16s ease; }
+.job-row { position: relative; display: grid; grid-template-columns: minmax(300px, 1.25fr) minmax(260px, 1.15fr) minmax(180px, .75fr) minmax(150px, .6fr); gap: 20px; align-items: center; min-height: 86px; padding: var(--row-pad-y) var(--row-pad-x); border-bottom: 1px solid var(--border); background: var(--surface); transition: background .16s ease; }
 .job-row:last-child { border-bottom: 0; }
 .job-row::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--muted); }
 .job-row.is-active::before { background: var(--active); }.job-row.is-waiting::before { background: var(--waiting); }.job-row.is-issue::before { background: var(--danger); }.job-row.is-complete::before { background: var(--success); }
 .job-row:hover { background: var(--surface-raised); }
 .job-identity { min-width: 0; }
-.status-chip { display: inline-flex; margin-bottom: 9px; padding: 4px 7px; border: 1px solid currentColor; border-radius: 2px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.status-chip { display: inline-flex; margin-bottom: 5px; padding: 3px 6px; border: 1px solid currentColor; border-radius: 2px; background: transparent; color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .05em; line-height: 1.1; text-transform: uppercase; }
 .is-active .status-chip { color: var(--active); }.is-waiting .status-chip { color: var(--waiting); }.is-issue .status-chip { color: var(--danger); }.is-complete .status-chip { color: var(--success); }
 .job-name { overflow: hidden; font-size: clamp(14px, 1.25vw, 17px); font-weight: 650; letter-spacing: -.005em; text-overflow: ellipsis; white-space: nowrap; }
-.workflow-name { margin-top: 6px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.progress-copy { margin-bottom: 9px; }
-.progress-copy strong { font-size: 20px; }
+.workflow-name { margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.progress-copy { margin-bottom: 6px; }
+.progress-copy strong { font-size: 18px; }
 .progress-track { height: 6px; overflow: hidden; background: var(--border); }
 .progress-fill { height: 100%; min-width: 2px; background: var(--active); transition: width .4s ease; }
 .progress-track.indeterminate .progress-fill { width: 28%; animation: scan 1.5s ease-in-out infinite alternate; }
 @keyframes scan { from { transform: translateX(-35%); } to { transform: translateX(285%); } }
-.eta-card { padding: 11px 13px; border-left: 2px solid var(--border); background: transparent; }
-.eta-card strong { display: block; font-size: 17px; }.eta-card span { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.eta-card { padding: 7px 10px; border-left: 2px solid var(--border); background: transparent; }
+.eta-card strong { display: block; font-size: 16px; }.eta-card span { display: block; margin-top: 2px; color: var(--muted); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
 .timing { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .timing span { display: block; color: var(--muted); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }.timing strong { display: block; margin-top: 4px; font-size: 12px; white-space: nowrap; }
 .empty-state { min-height: 230px; display: grid; place-content: center; justify-items: center; gap: 7px; text-align: center; }
@@ -135,8 +136,8 @@ input:focus, select:focus { border-color: var(--text); }
 .primary-button, .text-button { min-width: 104px; height: 40px; border: 0; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 750; transition: transform .16s ease, background .16s ease; }.primary-button { background: var(--primary); color: var(--background); }.primary-button:hover { background: var(--text); }.primary-button:active, .text-button:active { transform: scale(.97); }.text-button { background: transparent; color: var(--muted); }.text-button:hover { background: var(--surface); }
 .toast { position: fixed; z-index: 50; right: 22px; bottom: 22px; max-width: 360px; padding: 12px 15px; border: 1px solid var(--border); border-radius: 2px; background: var(--surface-raised); color: var(--text); box-shadow: var(--elevation-1); font-size: 11px; }
 
-body[data-density="compact"] { --row-pad: 13px; }
-body[data-density="compact"] .job-row { min-height: 86px; }
+body[data-density="compact"] { --row-pad-y: 9px; --row-pad-x: 16px; }
+body[data-density="compact"] .job-row { min-height: 74px; }
 body:not(.desktop) .desktop-only { display: none !important; }
 
 @media (max-width: 1120px) {

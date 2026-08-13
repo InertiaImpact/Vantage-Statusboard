@@ -28,14 +28,47 @@ function jobPriority(job) {
 
 function parseDate(value) {
   if (!value) return null;
-  const serialized = String(value).match(/\/Date\((\d+)/);
-  const parsed = serialized ? new Date(Number(serialized[1])) : new Date(value);
+  const text = String(value);
+  const serialized = text.match(/\/Date\((\d+)/);
+  const normalized = text.replace(/(\.\d{3})\d+(?=Z$|[+-]\d{2}:?\d{2}$)/, '$1');
+  const parsed = serialized ? new Date(Number(serialized[1])) : new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function elapsedSeconds(value) {
   const date = parseDate(value);
   return date ? Math.max(0, Math.round((Date.now() - date.getTime()) / 1000)) : null;
+}
+
+function extractRemainingSeconds(...payloads) {
+  const fields = [
+    'EstimatedTimeRemainingInSeconds',
+    'EstimatedRemainingTimeInSeconds',
+    'RemainingTimeInSeconds',
+    'EstimatedSecondsRemaining',
+    'SecondsRemaining'
+  ];
+  for (const payload of payloads) {
+    for (const field of fields) {
+      const rawValue = payload?.[field];
+      if (rawValue === null || rawValue === undefined || rawValue === '') continue;
+      const value = Number(rawValue);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+  return null;
+}
+
+function jobRecency(job) {
+  const date = parseDate(job.updated) || parseDate(job.started);
+  return date ? date.getTime() : 0;
+}
+
+function compareJobs(left, right) {
+  return jobPriority(left) - jobPriority(right)
+    || jobRecency(right) - jobRecency(left)
+    || left.workflowName.localeCompare(right.workflowName)
+    || left.name.localeCompare(right.name);
 }
 
 async function mapLimit(items, concurrency, mapper) {
@@ -80,7 +113,7 @@ class VantageClient {
     const jobs = workflowJobs.flat();
     const currentJobs = jobs.filter((job) => !job.isMonitor && ['active', 'waiting', 'waitingtoretry', 'queuedforsubmission'].includes(compactState(job.state)));
     await mapLimit(currentJobs.slice(0, 32), 8, async (job) => this.#enrichJob(job));
-    jobs.sort((left, right) => jobPriority(left) - jobPriority(right) || left.workflowName.localeCompare(right.workflowName) || left.name.localeCompare(right.name));
+    jobs.sort(compareJobs);
 
     return {
       connected: true,
@@ -104,21 +137,22 @@ class VantageClient {
       this.#requestJson(`/Rest/Jobs/${encodedId}/Progress`),
       this.#requestJson(`/Rest/Jobs/${encodedId}/Metrics`)
     ]);
-    if (progressResult.status === 'fulfilled') {
-      const progress = Number(progressResult.value.JobProgress ?? progressResult.value.Progress);
+    const progressPayload = progressResult.status === 'fulfilled' ? progressResult.value : null;
+    const metricsPayload = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
+    if (progressPayload) {
+      const progress = Number(progressPayload.JobProgress ?? progressPayload.Progress);
       if (Number.isFinite(progress)) job.progress = Math.min(100, Math.max(0, progress));
     }
-    if (metricsResult.status === 'fulfilled') {
-      const metrics = metricsResult.value;
+    if (metricsPayload) {
+      const metrics = metricsPayload;
       const runTime = Number(metrics.TotalRunTimeInSeconds ?? metrics.RunTimeInSeconds);
       const queueTime = Number(metrics.TotalQueueTimeInSeconds ?? metrics.QueueTimeInSeconds);
       if (Number.isFinite(runTime) && runTime > 0) job.runTimeSeconds = runTime;
       if (Number.isFinite(queueTime) && queueTime >= 0) job.queueTimeSeconds = queueTime;
     }
     if (!job.runTimeSeconds) job.runTimeSeconds = elapsedSeconds(job.started);
-    if (job.progress > 0 && job.runTimeSeconds > 0) {
-      job.etaSeconds = Math.round(job.runTimeSeconds * (100 - job.progress) / job.progress);
-    }
+    job.etaSeconds = extractRemainingSeconds(progressPayload, metricsPayload);
+    job.etaSource = job.etaSeconds === null ? null : 'vantage';
     return job;
   }
 
@@ -137,7 +171,8 @@ class VantageClient {
       workflowName,
       runTimeSeconds: null,
       queueTimeSeconds: null,
-      etaSeconds: null
+      etaSeconds: null,
+      etaSource: null
     };
   }
 
@@ -193,4 +228,4 @@ class VantageClient {
   }
 }
 
-module.exports = { VantageClient, compactState, elapsedSeconds, jobPriority, mapLimit, parseDate };
+module.exports = { VantageClient, compactState, compareJobs, elapsedSeconds, extractRemainingSeconds, jobPriority, jobRecency, mapLimit, parseDate };

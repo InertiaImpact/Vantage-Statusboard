@@ -13,9 +13,9 @@ A self-contained Windows desktop and web status board for Telestream Vantage new
 - Optional summary counters, hidden by default for a focused job view
 - Built-in themes and importable JSON theme files
 - Read-only Vantage REST integration
-- Active → waiting → issue → complete status ordering
+- Active → waiting → issue → complete status ordering, newest updates first within each group
 - Multi-workflow filtering with saved selections
-- Progress, estimated remaining time, start time, and run time
+- Progress, Vantage-provided remaining time when exposed by REST, start time, and run time
 
 ## Development
 
