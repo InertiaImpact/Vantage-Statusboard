@@ -15,7 +15,7 @@ A self-contained Windows desktop and web status board for Telestream Vantage new
 - Read-only Vantage REST integration
 - Active → waiting → issue → complete status ordering, newest updates first within each group
 - Multi-workflow filtering with saved selections
-- Progress, Vantage-provided remaining time when exposed by REST, start time, and run time
+- Progress, start time, and run time
 
 ## Development
 

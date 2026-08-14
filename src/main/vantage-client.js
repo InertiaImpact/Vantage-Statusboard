@@ -40,25 +40,6 @@ function elapsedSeconds(value) {
   return date ? Math.max(0, Math.round((Date.now() - date.getTime()) / 1000)) : null;
 }
 
-function extractRemainingSeconds(...payloads) {
-  const fields = [
-    'EstimatedTimeRemainingInSeconds',
-    'EstimatedRemainingTimeInSeconds',
-    'RemainingTimeInSeconds',
-    'EstimatedSecondsRemaining',
-    'SecondsRemaining'
-  ];
-  for (const payload of payloads) {
-    for (const field of fields) {
-      const rawValue = payload?.[field];
-      if (rawValue === null || rawValue === undefined || rawValue === '') continue;
-      const value = Number(rawValue);
-      if (Number.isFinite(value) && value >= 0) return value;
-    }
-  }
-  return null;
-}
-
 function jobRecency(job) {
   const date = parseDate(job.updated) || parseDate(job.started);
   return date ? date.getTime() : 0;
@@ -151,8 +132,6 @@ class VantageClient {
       if (Number.isFinite(queueTime) && queueTime >= 0) job.queueTimeSeconds = queueTime;
     }
     if (!job.runTimeSeconds) job.runTimeSeconds = elapsedSeconds(job.started);
-    job.etaSeconds = extractRemainingSeconds(progressPayload, metricsPayload);
-    job.etaSource = job.etaSeconds === null ? null : 'vantage';
     return job;
   }
 
@@ -170,9 +149,7 @@ class VantageClient {
       workflowId,
       workflowName,
       runTimeSeconds: null,
-      queueTimeSeconds: null,
-      etaSeconds: null,
-      etaSource: null
+      queueTimeSeconds: null
     };
   }
 
@@ -228,4 +205,4 @@ class VantageClient {
   }
 }
 
-module.exports = { VantageClient, compactState, compareJobs, elapsedSeconds, extractRemainingSeconds, jobPriority, jobRecency, mapLimit, parseDate };
+module.exports = { VantageClient, compactState, compareJobs, elapsedSeconds, jobPriority, jobRecency, mapLimit, parseDate };

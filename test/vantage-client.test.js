@@ -3,7 +3,7 @@
 const http = require('node:http');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { VantageClient, compareJobs, extractRemainingSeconds, jobPriority, parseDate } = require('../src/main/vantage-client');
+const { VantageClient, compareJobs, jobPriority, parseDate } = require('../src/main/vantage-client');
 
 function json(response, payload) {
   const body = JSON.stringify(payload);
@@ -34,7 +34,6 @@ test('collects, enriches, and sorts Vantage jobs', async (context) => {
   const result = await client.getStatus();
   assert.deepEqual(result.jobs.map((job) => job.state), ['Active', 'Waiting', 'Complete']);
   assert.equal(result.jobs[0].progress, 50);
-  assert.equal(result.jobs[0].etaSeconds, null);
   assert.ok(jobPriority(result.jobs[0]) < jobPriority(result.jobs[2]));
 });
 
@@ -51,10 +50,4 @@ test('sorts newest updates first within each status group', () => {
 
 test('parses Vantage timestamps with seven fractional-second digits', () => {
   assert.equal(parseDate('2026-08-12T22:00:26.6530000Z').toISOString(), '2026-08-12T22:00:26.653Z');
-});
-
-test('uses only remaining time explicitly returned by Vantage', () => {
-  assert.equal(extractRemainingSeconds({ JobProgress: 45 }, { TotalRunTimeInSeconds: 72 }), null);
-  assert.equal(extractRemainingSeconds({ EstimatedTimeRemainingInSeconds: null }), null);
-  assert.equal(extractRemainingSeconds({ JobProgress: 45, EstimatedTimeRemainingInSeconds: 140 }), 140);
 });

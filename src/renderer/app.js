@@ -59,18 +59,6 @@ function formatDuration(value) {
   return hours ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)} min`;
 }
 
-function formatEstimate(value) {
-  if (value === null || value === undefined || value === '') return 'Unavailable';
-  const seconds = Math.max(0, Math.round(Number(value)));
-  if (!Number.isFinite(seconds)) return 'Unavailable';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainder = seconds % 60;
-  return hours
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
-    : `${minutes}:${String(remainder).padStart(2, '0')}`;
-}
-
 function cleanName(value) {
   return String(value || 'Unnamed job').replace(/_[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?=\.[^.]+$|$)/i, '');
 }
@@ -162,20 +150,10 @@ function renderJob(job) {
   const progressAvailable = Number.isFinite(Number(job.progress));
   const progress = complete ? 100 : (progressAvailable ? Math.min(100, Math.max(0, Number(job.progress))) : 0);
   const indeterminate = group === 'active' && !progressAvailable;
-  let estimate = 'Unavailable';
-  let estimateLabel = 'not exposed by REST';
-  if (complete) { estimate = 'Done'; estimateLabel = 'completed'; }
-  else if (group === 'waiting') { estimate = 'Pending'; estimateLabel = 'waiting for service'; }
-  else if (group === 'issue') { estimate = 'Stopped'; estimateLabel = 'check Vantage'; }
-  else if (job.etaSeconds !== null && job.etaSeconds !== undefined && Number.isFinite(Number(job.etaSeconds))) {
-    estimate = formatEstimate(job.etaSeconds);
-    estimateLabel = 'Vantage remaining';
-  }
 
   return `<article class="job-row is-${group}">
     <div class="job-identity"><span class="status-chip">${escapeHtml(job.state)}</span><div class="job-name" title="${escapeHtml(job.name)}">${escapeHtml(cleanName(job.name))}</div><div class="workflow-name">${escapeHtml(job.workflowName)}</div></div>
     <div><div class="progress-copy"><strong>${progressAvailable || complete ? `${Math.round(progress)}%` : 'Preparing'}</strong></div><div class="progress-track ${indeterminate ? 'indeterminate' : ''}"><div class="progress-fill" style="width:${indeterminate ? 28 : progress}%"></div></div></div>
-    <div class="eta-card"><strong>${escapeHtml(estimate)}</strong><span>${escapeHtml(estimateLabel)}</span></div>
     <div class="timing"><div><span>Started</span><strong>${escapeHtml(formatClock(job.started))}</strong></div><div><span>Run time</span><strong>${escapeHtml(formatDuration(job.runTimeSeconds))}</strong></div></div>
   </article>`;
 }
