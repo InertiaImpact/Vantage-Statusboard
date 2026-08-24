@@ -15,11 +15,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   },
   dashboard: {
     refreshSeconds: 10,
+    failedJobExpiryMinutes: 60,
     workflowIds: [],
     view: 'current',
     search: '',
     showSummary: false,
     themeId: 'slate',
+    uiScalePercent: 100,
     webPort: 8765,
     exposeToLan: false
   },

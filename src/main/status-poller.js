@@ -9,6 +9,7 @@ class StatusPoller extends EventEmitter {
     this.settingsRepository = settingsRepository;
     this.timer = null;
     this.inFlight = null;
+    this.completedMetricsCache = new Map();
     this.status = {
       connected: false,
       fetchedAt: null,
@@ -48,7 +49,9 @@ class StatusPoller extends EventEmitter {
   async #performRefresh() {
     try {
       const settings = this.settingsRepository.get();
-      this.status = await new VantageClient(settings.vantage).getStatus();
+      this.status = await new VantageClient(settings.vantage, {
+        completedMetricsCache: this.completedMetricsCache
+      }).getStatus(settings.dashboard);
       this.status.error = null;
     } catch (error) {
       this.status = {

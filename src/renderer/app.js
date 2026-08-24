@@ -1,11 +1,15 @@
 'use strict';
 
 const byId = (id) => document.getElementById(id);
+const UI_SCALE_MIN = 80;
+const UI_SCALE_MAX = 130;
+const UI_SCALE_STEP = 5;
 const state = {
   settings: null,
   themes: [],
   status: null,
   desktopState: { alwaysOnTop: false, resizeLocked: false },
+  installation: { available: false, installed: false, portable: false, packaged: false, installDirectory: '' },
   timer: null
 };
 
@@ -13,6 +17,11 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[character]));
+}
+
+function apiUrl(pathname) {
+  const relativePath = String(pathname || '').replace(/^\/+/, '');
+  return new URL(`api/${relativePath}`, window.location.href);
 }
 
 function compactState(value) {
@@ -45,22 +54,64 @@ function jobRecency(job) {
   return date ? date.getTime() : 0;
 }
 
+function issueExpired(job, expiryMinutes, now = Date.now()) {
+  if (groupFor(job) !== 'issue') return false;
+  const timestamp = jobRecency(job);
+  const minutes = Number(expiryMinutes);
+  if (!timestamp || !Number.isFinite(minutes) || minutes <= 0) return false;
+  return timestamp <= now - (minutes * 60 * 1000);
+}
+
 function formatClock(value) {
   const date = parseDate(value);
   return date ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
 }
 
 function formatDuration(value) {
+  if (value === null || value === undefined || value === '') return '—';
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0) return '—';
-  if (seconds < 45) return '< 1 min';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours ? `${hours}h ${minutes}m` : `${Math.max(1, minutes)} min`;
+  const rounded = Math.round(seconds);
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const remainder = rounded % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
 function cleanName(value) {
   return String(value || 'Unnamed job').replace(/_[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?=\.[^.]+$|$)/i, '');
+}
+
+function normalizedUiScale(value) {
+  const percent = Number.parseInt(value, 10);
+  return Number.isFinite(percent) ? Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, percent)) : 100;
+}
+
+function applyUiScale(value) {
+  const percent = normalizedUiScale(value);
+  if (window.desktopBridge?.isDesktop) {
+    document.documentElement.style.zoom = '';
+    void window.desktopBridge.previewUiScale(percent);
+  } else {
+    document.documentElement.style.zoom = String(percent / 100);
+  }
+  return percent;
+}
+
+function setScaleControl(value, preview = true) {
+  const percent = normalizedUiScale(value);
+  byId('scaleValue').value = `${percent}%`;
+  byId('scaleValue').dataset.percent = String(percent);
+  byId('scaleDownButton').disabled = percent <= UI_SCALE_MIN;
+  byId('scaleUpButton').disabled = percent >= UI_SCALE_MAX;
+  if (preview) applyUiScale(percent);
+}
+
+function adjustScale(direction) {
+  const current = normalizedUiScale(byId('scaleValue').dataset.percent);
+  setScaleControl(current + (direction * UI_SCALE_STEP));
 }
 
 function applyTheme(theme) {
@@ -84,6 +135,48 @@ function renderThemePreview() {
   applyTheme(theme);
 }
 
+function renderInstallationStatus(status = state.installation) {
+  state.installation = { ...state.installation, ...status };
+  const title = byId('installationTitle');
+  const detail = byId('installationDetail');
+  const button = byId('installButton');
+
+  if (state.installation.error) {
+    title.textContent = 'Installation unavailable';
+    detail.textContent = state.installation.error;
+    button.textContent = 'Install';
+    button.disabled = !state.installation.available;
+    return;
+  }
+  if (state.installation.started) {
+    title.textContent = 'Starting Windows installer';
+    detail.textContent = 'The portable app will close when the installer opens.';
+    button.textContent = 'Starting…';
+    button.disabled = true;
+    return;
+  }
+  if (state.installation.installed) {
+    title.textContent = 'Installed on this computer';
+    detail.textContent = state.installation.installDirectory || 'Installed in the Windows Programs folder.';
+    button.textContent = 'Installed';
+    button.disabled = true;
+    return;
+  }
+  if (state.installation.portable) {
+    title.textContent = 'Portable app';
+    detail.textContent = state.installation.available
+      ? `Install in ${state.installation.installDirectory || 'the Windows Programs folder'} and add it to the Start menu.`
+      : 'This portable copy does not contain its Windows installer.';
+    button.textContent = 'Install';
+    button.disabled = !state.installation.available;
+    return;
+  }
+  title.textContent = 'Development build';
+  detail.textContent = 'The Install button is available in the packaged portable app.';
+  button.textContent = 'Install';
+  button.disabled = true;
+}
+
 function visibleJobs() {
   if (!state.status?.jobs) return [];
   const dashboard = state.settings.dashboard;
@@ -92,6 +185,7 @@ function visibleJobs() {
     if (job.isMonitor) return false;
     if (dashboard.workflowIds.length && !dashboard.workflowIds.includes(job.workflowId)) return false;
     const group = groupFor(job);
+    if (issueExpired(job, dashboard.failedJobExpiryMinutes)) return false;
     if (dashboard.view === 'current' && group === 'complete') return false;
     if (dashboard.view === 'recent' && group === 'complete') {
       const updated = parseDate(job.updated);
@@ -150,11 +244,17 @@ function renderJob(job) {
   const progressAvailable = Number.isFinite(Number(job.progress));
   const progress = complete ? 100 : (progressAvailable ? Math.min(100, Math.max(0, Number(job.progress))) : 0);
   const indeterminate = group === 'active' && !progressAvailable;
+  const queueSeconds = job.queueTimeSeconds === null || job.queueTimeSeconds === undefined || job.queueTimeSeconds === ''
+    ? null
+    : Number(job.queueTimeSeconds);
+  const queueNote = Number.isFinite(queueSeconds) && queueSeconds > 0
+    ? `<small class="timing-note">Queue wait ${escapeHtml(formatDuration(queueSeconds))}</small>`
+    : '';
 
   return `<article class="job-row is-${group}">
     <div class="job-identity"><span class="status-chip">${escapeHtml(job.state)}</span><div class="job-name" title="${escapeHtml(job.name)}">${escapeHtml(cleanName(job.name))}</div><div class="workflow-name">${escapeHtml(job.workflowName)}</div></div>
     <div><div class="progress-copy"><strong>${progressAvailable || complete ? `${Math.round(progress)}%` : 'Preparing'}</strong></div><div class="progress-track ${indeterminate ? 'indeterminate' : ''}"><div class="progress-fill" style="width:${indeterminate ? 28 : progress}%"></div></div></div>
-    <div class="timing"><div><span>Started</span><strong>${escapeHtml(formatClock(job.started))}</strong></div><div><span>Run time</span><strong>${escapeHtml(formatDuration(job.runTimeSeconds))}</strong></div></div>
+    <div class="timing"><div><span>Started</span><strong>${escapeHtml(formatClock(job.started))}</strong>${queueNote}</div><div><span>Run time</span><strong>${escapeHtml(formatDuration(job.runTimeSeconds))}</strong></div></div>
   </article>`;
 }
 
@@ -168,6 +268,7 @@ function populateSettings() {
   byId('tokenInput').value = '';
   byId('apiKeyHeaderInput').value = vantage.apiKeyHeader;
   byId('refreshInput').value = dashboard.refreshSeconds;
+  byId('failedJobExpiryInput').value = dashboard.failedJobExpiryMinutes / 60;
   byId('viewInput').value = dashboard.view;
   byId('searchInput').value = dashboard.search;
   byId('summaryInput').checked = dashboard.showSummary;
@@ -175,9 +276,11 @@ function populateSettings() {
   byId('lanInput').checked = dashboard.exposeToLan;
   byId('themeInput').innerHTML = state.themes.map((theme) => `<option value="${escapeHtml(theme.id)}">${escapeHtml(theme.name)}${theme.builtIn ? '' : ' · custom'}</option>`).join('');
   byId('themeInput').value = dashboard.themeId;
+  setScaleControl(dashboard.uiScalePercent, false);
   byId('autostartInput').checked = desktop.autostart;
   byId('verifyTlsInput').checked = vantage.verifyTls;
   byId('timeoutInput').value = vantage.requestTimeoutSeconds;
+  renderInstallationStatus();
   populateWorkflows();
   renderAuthFields();
   renderThemePreview();
@@ -236,6 +339,7 @@ function closeSettings() {
   byId('settingsDrawer').setAttribute('aria-hidden', 'true');
   setTimeout(() => { byId('settingsScrim').hidden = true; }, 220);
   applyTheme(state.themes.find((theme) => theme.id === state.settings.dashboard.themeId));
+  applyUiScale(state.settings.dashboard.uiScalePercent);
 }
 
 async function saveSettings(event) {
@@ -256,27 +360,31 @@ async function saveSettings(event) {
     },
     dashboard: {
       refreshSeconds: Number(byId('refreshInput').value),
+      failedJobExpiryMinutes: Math.round(Number(byId('failedJobExpiryInput').value) * 60),
       workflowIds: selectedWorkflowIds(),
       view: byId('viewInput').value,
       search: byId('searchInput').value,
       showSummary: byId('summaryInput').checked,
       themeId: byId('themeInput').value,
+      uiScalePercent: Number(byId('scaleValue').dataset.percent),
       webPort: Number(byId('webPortInput').value),
       exposeToLan: byId('lanInput').checked
     },
     desktop: { autostart: byId('autostartInput').checked }
   };
+  const installsForAutostart = payload.desktop.autostart && state.installation.portable;
   try {
     const previousWebPort = state.settings.dashboard.webPort;
-    const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await fetch(apiUrl('settings'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Unable to save settings.');
     state.settings = result.settings;
     state.themes = result.themes;
     applyTheme(result.activeTheme);
+    applyUiScale(state.settings.dashboard.uiScalePercent);
     renderStatus();
     closeSettings();
-    showToast('Settings saved. Reconnecting to Vantage…');
+    showToast(installsForAutostart ? 'Settings saved. Starting Windows installer…' : 'Settings saved. Reconnecting to Vantage…');
     scheduleRefresh();
     if (!window.desktopBridge?.isDesktop && previousWebPort !== state.settings.dashboard.webPort) {
       const nextUrl = new URL(window.location.href);
@@ -289,10 +397,21 @@ async function saveSettings(event) {
   }
 }
 
+async function installApplication() {
+  renderInstallationStatus({ started: true, error: null });
+  try {
+    const result = await window.desktopBridge.installApplication();
+    renderInstallationStatus(result);
+    showToast('Windows installer started…');
+  } catch (error) {
+    renderInstallationStatus({ started: false, error: error.message });
+  }
+}
+
 async function importTheme(file) {
   if (!file) return;
   try {
-    const response = await fetch('/api/themes/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: await file.text() }) });
+    const response = await fetch(apiUrl('themes/import'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: await file.text() }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Unable to import theme.');
     state.themes = result.themes;
@@ -310,7 +429,7 @@ async function refresh() {
   byId('connectionState').dataset.state = 'loading';
   byId('connectionTitle').textContent = 'Refreshing';
   try {
-    const response = await fetch('/api/refresh', { method: 'POST' });
+    const response = await fetch(apiUrl('refresh'), { method: 'POST' });
     state.status = await response.json();
     renderStatus();
   } catch (error) {
@@ -322,7 +441,7 @@ async function refresh() {
 
 async function readCachedStatus() {
   try {
-    const response = await fetch('/api/status');
+    const response = await fetch(apiUrl('status'));
     if (!response.ok) throw new Error('Unable to read status.');
     state.status = await response.json();
     renderStatus();
@@ -356,21 +475,27 @@ function updateDesktopState(desktopState) {
 
 async function initialize() {
   document.body.classList.toggle('desktop', Boolean(window.desktopBridge?.isDesktop));
-  const response = await fetch('/api/bootstrap');
+  const response = await fetch(apiUrl('bootstrap'));
   const bootstrap = await response.json();
   state.settings = bootstrap.settings;
   state.themes = bootstrap.themes;
   state.status = bootstrap.status;
+  if (window.desktopBridge?.getInstallationStatus) {
+    state.installation = await window.desktopBridge.getInstallationStatus();
+  }
   updateDesktopState({
     alwaysOnTop: state.settings.desktop.alwaysOnTop,
     resizeLocked: state.settings.desktop.resizeLocked
   });
   applyTheme(bootstrap.activeTheme);
+  applyUiScale(state.settings.dashboard.uiScalePercent);
+  renderInstallationStatus();
   renderStatus();
   scheduleRefresh();
 
   window.desktopBridge?.onStatusUpdate((status) => { state.status = status; renderStatus(); });
   window.desktopBridge?.onDesktopState(updateDesktopState);
+  window.desktopBridge?.onInstallationState(renderInstallationStatus);
 }
 
 byId('settingsButton').addEventListener('click', openSettings);
@@ -380,12 +505,15 @@ byId('settingsScrim').addEventListener('click', closeSettings);
 byId('settingsForm').addEventListener('submit', saveSettings);
 byId('authTypeInput').addEventListener('change', renderAuthFields);
 byId('themeInput').addEventListener('change', renderThemePreview);
+byId('scaleDownButton').addEventListener('click', () => adjustScale(-1));
+byId('scaleUpButton').addEventListener('click', () => adjustScale(1));
 byId('workflowOptions').addEventListener('change', updateWorkflowSummary);
 byId('workflowAllButton').addEventListener('click', () => {
   byId('workflowOptions').querySelectorAll('input:checked').forEach((input) => { input.checked = false; });
   updateWorkflowSummary();
 });
 byId('themeFileInput').addEventListener('change', (event) => importTheme(event.target.files[0]));
+byId('installButton').addEventListener('click', installApplication);
 byId('refreshButton').addEventListener('click', refresh);
 byId('pinButton').addEventListener('click', async () => updateDesktopState(await window.desktopBridge.windowAction('toggle-pin')));
 byId('lockButton').addEventListener('click', async () => updateDesktopState(await window.desktopBridge.windowAction('toggle-lock')));

@@ -24,13 +24,27 @@ test('preserves a stored HTTPS protocol with a normalized hostname', () => {
 test('validates ranges and preserves safe defaults', () => {
   const settings = validateSettings({
     vantage: { server: 'vantage.test', port: 99999, requestTimeoutSeconds: 1 },
-    dashboard: { webPort: 20, refreshSeconds: 1 }
+    dashboard: { webPort: 20, refreshSeconds: 1, uiScalePercent: 500 }
   });
   assert.equal(settings.vantage.port, 65535);
   assert.equal(settings.vantage.requestTimeoutSeconds, 2);
   assert.equal(settings.dashboard.webPort, 1024);
   assert.equal(settings.dashboard.refreshSeconds, 5);
+  assert.equal(settings.dashboard.uiScalePercent, 130);
   assert.equal(settings.dashboard.showSummary, false);
+});
+
+test('validates the saved interface scale', () => {
+  assert.equal(validateSettings({ dashboard: { uiScalePercent: 10 } }).dashboard.uiScalePercent, 80);
+  assert.equal(validateSettings({ dashboard: { uiScalePercent: '115' } }).dashboard.uiScalePercent, 115);
+  assert.equal(validateSettings({ dashboard: { uiScalePercent: 'invalid' } }).dashboard.uiScalePercent, 100);
+});
+
+test('defaults and validates failed-job expiry', () => {
+  assert.equal(validateSettings({ dashboard: {} }).dashboard.failedJobExpiryMinutes, 60);
+  assert.equal(validateSettings({ dashboard: { failedJobExpiryMinutes: 90 } }).dashboard.failedJobExpiryMinutes, 90);
+  assert.equal(validateSettings({ dashboard: { failedJobExpiryMinutes: 1 } }).dashboard.failedJobExpiryMinutes, 15);
+  assert.equal(validateSettings({ dashboard: { failedJobExpiryMinutes: 'invalid' } }).dashboard.failedJobExpiryMinutes, 60);
 });
 
 test('keeps the optional summary hidden unless enabled', () => {

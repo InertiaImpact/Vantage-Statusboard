@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { InstallationManager } = require('./installation-manager');
 const { SettingsRepository } = require('./settings-repository');
 const { ThemeRepository } = require('./theme-repository');
 const { StatusPoller } = require('./status-poller');
@@ -12,18 +13,67 @@ let settingsRepository;
 let themeRepository;
 let poller;
 let webServer;
+let installationManager;
+let installationStarting = false;
+
+const UI_SCALE_MIN = 80;
+const UI_SCALE_MAX = 130;
+
+function normalizedUiScale(value) {
+  const percent = Number.parseInt(value, 10);
+  return Number.isFinite(percent) ? Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, percent)) : 100;
+}
+
+function applyUiScale(percent) {
+  if (!mainWindow || mainWindow.isDestroyed()) return 100;
+  const normalized = normalizedUiScale(percent);
+  const factor = normalized / 100;
+  mainWindow.setMinimumSize(Math.round(940 * factor), Math.round(620 * factor));
+  mainWindow.webContents.setZoomFactor(factor);
+  return normalized;
+}
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
 function applyAutostart(enabled) {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32' || !app.isPackaged) return;
   const executablePath = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
   app.setLoginItemSettings({
     openAtLogin: enabled,
     path: executablePath,
-    args: app.isPackaged ? ['--autostart'] : [app.getAppPath(), '--autostart']
+    args: ['--autostart']
   });
+}
+
+function installationStatus() {
+  return installationManager?.getStatus() || {
+    available: false,
+    installed: false,
+    portable: false,
+    packaged: false,
+    version: app.getVersion(),
+    installDirectory: ''
+  };
+}
+
+function startInstallation(trigger) {
+  const currentStatus = installationStatus();
+  if (currentStatus.installed) return { ...currentStatus, started: false, trigger };
+  if (installationStarting) return { ...currentStatus, started: true, trigger };
+  installationStarting = true;
+  try {
+    applyAutostart(false);
+    const result = installationManager.startInstallation();
+    const payload = { ...result, trigger };
+    mainWindow?.webContents.send('installation-state', payload);
+    if (result.started) setTimeout(() => app.quit(), 500);
+    return payload;
+  } catch (error) {
+    installationStarting = false;
+    mainWindow?.webContents.send('installation-state', { ...installationStatus(), error: error.message, trigger });
+    throw error;
+  }
 }
 
 function applyWindowState(settings) {
@@ -31,10 +81,19 @@ function applyWindowState(settings) {
   mainWindow.setAlwaysOnTop(settings.desktop.alwaysOnTop, 'floating');
   mainWindow.setResizable(!settings.desktop.resizeLocked);
   mainWindow.setMovable(!settings.desktop.resizeLocked);
+  applyUiScale(settings.dashboard.uiScalePercent);
   mainWindow.webContents.send('desktop-state', {
     alwaysOnTop: settings.desktop.alwaysOnTop,
     resizeLocked: settings.desktop.resizeLocked
   });
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.moveTop();
+  mainWindow.focus();
 }
 
 async function handleWindowAction(action) {
@@ -64,6 +123,14 @@ async function handleWindowAction(action) {
 
 async function handleSettingsSaved() {
   const settings = settingsRepository.get();
+  if (settings.desktop.autostart && installationStatus().portable) {
+    try {
+      startInstallation('autostart');
+    } catch (error) {
+      dialog.showErrorBox('Unable to install Vantage Statusboard', error.message);
+    }
+    return;
+  }
   applyAutostart(settings.desktop.autostart);
   applyWindowState(settings);
   poller.start();
@@ -80,13 +147,14 @@ async function handleSettingsSaved() {
 function createWindow() {
   const settings = settingsRepository.get();
   const bounds = settings.desktop.bounds || { width: 1440, height: 900 };
+  const scaleFactor = normalizedUiScale(settings.dashboard.uiScalePercent) / 100;
   mainWindow = new BrowserWindow({
     ...bounds,
-    minWidth: 940,
-    minHeight: 620,
+    minWidth: Math.round(940 * scaleFactor),
+    minHeight: Math.round(620 * scaleFactor),
     frame: false,
     backgroundColor: '#121212',
-    show: false,
+    show: true,
     title: 'Vantage Statusboard',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -96,8 +164,14 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(webServer.address.url);
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', showMainWindow);
+  mainWindow.webContents.once('did-finish-load', showMainWindow);
+  void mainWindow.loadURL(webServer.address.url)
+    .then(showMainWindow)
+    .catch((error) => {
+      showMainWindow();
+      dialog.showErrorBox('Unable to load Vantage Statusboard', error.message);
+    });
   mainWindow.on('close', () => {
     if (!mainWindow.isMaximized() && !mainWindow.isMinimized()) {
       settingsRepository.updateDesktop({ bounds: mainWindow.getBounds() });
@@ -114,6 +188,7 @@ function createWindow() {
 }
 
 async function initialize() {
+  installationManager = new InstallationManager(app);
   settingsRepository = new SettingsRepository(app.getPath('userData'));
   themeRepository = new ThemeRepository(app.getPath('userData'));
   poller = new StatusPoller(settingsRepository);
@@ -134,8 +209,22 @@ async function initialize() {
   }
 
   ipcMain.handle('window:action', (_event, action) => handleWindowAction(action));
+  ipcMain.handle('ui:preview-scale', (_event, payload) => applyUiScale(payload?.percent));
+  ipcMain.handle('installation:status', () => installationStatus());
+  ipcMain.handle('installation:install', () => startInstallation('manual'));
   createWindow();
-  applyAutostart(settingsRepository.get().desktop.autostart);
+  const autostart = settingsRepository.get().desktop.autostart;
+  if (autostart && installationStatus().portable) {
+    setTimeout(() => {
+      try {
+        startInstallation('autostart');
+      } catch (error) {
+        dialog.showErrorBox('Unable to install Vantage Statusboard', error.message);
+      }
+    }, 1000);
+  } else {
+    applyAutostart(autostart);
+  }
   poller.start();
   poller.on('status', (status) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('status-update', status);
@@ -145,8 +234,7 @@ async function initialize() {
 if (gotLock) {
   app.on('second-instance', () => {
     if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    showMainWindow();
   });
 
   app.whenReady().then(initialize);

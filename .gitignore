@@ -5,6 +5,7 @@ node_modules/
 dist/
 out/
 release/
+/build/generated/
 *.blockmap
 builder-debug.yml
 builder-effective-config.yaml

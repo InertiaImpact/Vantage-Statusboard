@@ -35,9 +35,15 @@ function parseDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function elapsedSeconds(value) {
+function elapsedSeconds(value, now = Date.now()) {
   const date = parseDate(value);
-  return date ? Math.max(0, Math.round((Date.now() - date.getTime()) / 1000)) : null;
+  return date ? Math.max(0, Math.round((now - date.getTime()) / 1000)) : null;
+}
+
+function nonnegativeNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function jobRecency(job) {
@@ -67,12 +73,14 @@ async function mapLimit(items, concurrency, mapper) {
 }
 
 class VantageClient {
-  constructor(settings) {
+  constructor(settings, options = {}) {
     this.settings = settings;
     this.baseUrl = `${settings.protocol}://${settings.server}:${settings.port}`;
+    this.completedMetricsCache = options.completedMetricsCache || new Map();
+    this.now = options.now || Date.now;
   }
 
-  async getStatus() {
+  async getStatus(dashboard = {}) {
     if (!this.settings.server) throw new Error('Configure a Vantage server in Settings.');
     const workflowsPayload = await this.#requestJson('/Rest/Workflows');
     const workflows = this.#arrayFrom(workflowsPayload, 'Workflows');
@@ -93,7 +101,11 @@ class VantageClient {
 
     const jobs = workflowJobs.flat();
     const currentJobs = jobs.filter((job) => !job.isMonitor && ['active', 'waiting', 'waitingtoretry', 'queuedforsubmission'].includes(compactState(job.state)));
-    await mapLimit(currentJobs.slice(0, 32), 8, async (job) => this.#enrichJob(job));
+    const completedJobs = this.#completedJobsToEnrich(jobs, dashboard);
+    await Promise.all([
+      mapLimit(currentJobs.slice(0, 32), 8, async (job) => this.#enrichCurrentJob(job)),
+      mapLimit(completedJobs, 8, async (job) => this.#enrichCompletedJob(job))
+    ]);
     jobs.sort(compareJobs);
 
     return {
@@ -112,7 +124,7 @@ class VantageClient {
     };
   }
 
-  async #enrichJob(job) {
+  async #enrichCurrentJob(job) {
     const encodedId = encodeURIComponent(job.id);
     const [progressResult, metricsResult] = await Promise.allSettled([
       this.#requestJson(`/Rest/Jobs/${encodedId}/Progress`),
@@ -126,13 +138,62 @@ class VantageClient {
     }
     if (metricsPayload) {
       const metrics = metricsPayload;
-      const runTime = Number(metrics.TotalRunTimeInSeconds ?? metrics.RunTimeInSeconds);
-      const queueTime = Number(metrics.TotalQueueTimeInSeconds ?? metrics.QueueTimeInSeconds);
-      if (Number.isFinite(runTime) && runTime > 0) job.runTimeSeconds = runTime;
-      if (Number.isFinite(queueTime) && queueTime >= 0) job.queueTimeSeconds = queueTime;
+      const runTime = nonnegativeNumber(metrics.TotalRunTimeInSeconds ?? metrics.RunTimeInSeconds);
+      const queueTime = nonnegativeNumber(metrics.TotalQueueTimeInSeconds ?? metrics.QueueTimeInSeconds);
+      if (runTime !== null && runTime > 0) job.runTimeSeconds = runTime;
+      if (queueTime !== null) job.queueTimeSeconds = queueTime;
     }
-    if (!job.runTimeSeconds) job.runTimeSeconds = elapsedSeconds(job.started);
+    if (job.runTimeSeconds === null && jobPriority(job) === 0) {
+      job.runTimeSeconds = elapsedSeconds(job.started, this.now());
+      job.runTimeSource = job.runTimeSeconds === null ? null : 'elapsed';
+    } else if (job.runTimeSeconds !== null) {
+      job.runTimeSource = 'vantage';
+    }
     return job;
+  }
+
+  async #enrichCompletedJob(job) {
+    const cachedMetrics = this.completedMetricsCache.get(job.id);
+    if (cachedMetrics) {
+      job.runTimeSeconds = cachedMetrics.runTimeSeconds;
+      job.queueTimeSeconds = cachedMetrics.queueTimeSeconds;
+      if (job.runTimeSeconds !== null) job.runTimeSource = 'vantage';
+      return job;
+    }
+
+    try {
+      const metrics = await this.#requestJson(`/Rest/Jobs/${encodeURIComponent(job.id)}/Metrics`);
+      const runTime = nonnegativeNumber(metrics.TotalRunTimeInSeconds ?? metrics.RunTimeInSeconds);
+      const queueTime = nonnegativeNumber(metrics.TotalQueueTimeInSeconds ?? metrics.QueueTimeInSeconds);
+      if (runTime !== null) {
+        job.runTimeSeconds = runTime;
+        job.runTimeSource = 'vantage';
+      }
+      if (queueTime !== null) job.queueTimeSeconds = queueTime;
+      if (runTime !== null || queueTime !== null) {
+        this.completedMetricsCache.set(job.id, {
+          runTimeSeconds: runTime,
+          queueTimeSeconds: queueTime
+        });
+      }
+    } catch {
+      // A missing final metric is safer to display as unavailable than to estimate.
+    }
+    return job;
+  }
+
+  #completedJobsToEnrich(jobs, dashboard) {
+    if (dashboard.view === 'current') return [];
+    const workflowIds = Array.isArray(dashboard.workflowIds) ? dashboard.workflowIds : [];
+    const query = String(dashboard.search || '').trim().toLowerCase();
+    const recentCutoff = this.now() - (2 * 60 * 60 * 1000);
+    return jobs
+      .filter((job) => !job.isMonitor && jobPriority(job) === 3)
+      .filter((job) => !workflowIds.length || workflowIds.includes(job.workflowId))
+      .filter((job) => !query || [job.name, job.workflowName, job.state].some((value) => String(value).toLowerCase().includes(query)))
+      .filter((job) => dashboard.view !== 'recent' || jobRecency(job) >= recentCutoff)
+      .sort((left, right) => jobRecency(right) - jobRecency(left))
+      .slice(0, 64);
   }
 
   #normalizeJob(job, workflowId, workflowName) {
@@ -149,6 +210,7 @@ class VantageClient {
       workflowId,
       workflowName,
       runTimeSeconds: null,
+      runTimeSource: null,
       queueTimeSeconds: null
     };
   }
@@ -205,4 +267,4 @@ class VantageClient {
   }
 }
 
-module.exports = { VantageClient, compactState, compareJobs, elapsedSeconds, jobPriority, jobRecency, mapLimit, parseDate };
+module.exports = { VantageClient, compactState, compareJobs, elapsedSeconds, jobPriority, jobRecency, mapLimit, nonnegativeNumber, parseDate };

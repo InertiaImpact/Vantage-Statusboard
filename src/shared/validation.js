@@ -45,6 +45,8 @@ function validateSettings(input) {
   );
   settings.vantage.requestTimeoutSeconds = clampInteger(settings.vantage.requestTimeoutSeconds, 2, 120, 15);
   settings.dashboard.refreshSeconds = clampInteger(settings.dashboard.refreshSeconds, 5, 3600, 10);
+  settings.dashboard.failedJobExpiryMinutes = clampInteger(settings.dashboard.failedJobExpiryMinutes, 15, 10080, 60);
+  settings.dashboard.uiScalePercent = clampInteger(settings.dashboard.uiScalePercent, 80, 130, 100);
   settings.dashboard.webPort = clampInteger(settings.dashboard.webPort, 1024, 65535, 8765);
   const workflowIds = Array.isArray(incomingDashboard.workflowIds)
     ? incomingDashboard.workflowIds
