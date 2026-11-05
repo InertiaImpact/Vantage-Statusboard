@@ -1,6 +1,6 @@
 {
   "name": "vantage-statusboard",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "A Windows newsroom status board for Telestream Vantage transcodes.",
   "main": "src/main/main.js",
   "author": "KGAN Engineering",
@@ -44,5 +44,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "@electron/get@5.1.0": {
+      "undici": "^7.30.1"
+    }
   }
 }
