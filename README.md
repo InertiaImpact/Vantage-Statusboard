@@ -12,6 +12,9 @@ A self-contained Windows desktop and web status board for Telestream Vantage new
 - Read-only web dashboard with settings available only in the desktop window
 - Persistent Vantage server, refresh, filter, theme, and window settings
 - Optional summary counters, hidden by default for a focused job view
+- Optional compact top-bar completion statistics for overall activity and up to two workflows
+- Persistent past-hour, today, past-24-hour, and since-tracking-start completion totals
+- Visible application version badge and a local-settings statistics reset control
 - Built-in themes and importable JSON theme files
 - Saved 80–130% interface scaling for text and controls
 - Read-only Vantage REST integration
@@ -53,7 +56,7 @@ Import [`examples/theme-example.json`](examples/theme-example.json) from **Setti
 
 ## Local data
 
-Settings and imported themes are stored in Electron's application-data directory for the current Windows user. Passwords and tokens are encrypted with the Windows account through Electron's safe storage when supported.
+Settings, imported themes, and completed-job statistics are stored in Electron's application-data directory for the current Windows user. Statistics begin recording on the first successful Vantage poll and continue for every workflow across restarts, whether or not the top-bar display is enabled. Passwords and tokens are encrypted with the Windows account through Electron's safe storage when supported.
 
 The web dashboard binds to `127.0.0.1` by default. It can be exposed to the LAN in Settings; do that only on a trusted network because anyone who can reach the port can view the board.
 

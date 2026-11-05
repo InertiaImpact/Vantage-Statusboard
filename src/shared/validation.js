@@ -54,6 +54,12 @@ function validateSettings(input) {
   settings.dashboard.workflowIds = [...new Set(workflowIds
     .map((workflowId) => String(workflowId).trim())
     .filter((workflowId) => workflowId && workflowId !== 'all'))];
+  const statsWorkflowIds = Array.isArray(incomingDashboard.statsWorkflowIds)
+    ? incomingDashboard.statsWorkflowIds
+    : [];
+  settings.dashboard.statsWorkflowIds = [...new Set(statsWorkflowIds
+    .map((workflowId) => String(workflowId).trim())
+    .filter((workflowId) => workflowId && workflowId !== 'all'))].slice(0, 2);
   delete settings.dashboard.workflowId;
   settings.vantage.protocol = settings.vantage.protocol === 'https' ? 'https' : 'http';
   settings.vantage.authType = ['none', 'basic', 'bearer', 'apikey'].includes(settings.vantage.authType)
@@ -64,6 +70,8 @@ function validateSettings(input) {
     : 'current';
   settings.vantage.verifyTls = Boolean(settings.vantage.verifyTls);
   settings.dashboard.showSummary = Boolean(settings.dashboard.showSummary);
+  settings.dashboard.showStats = Boolean(settings.dashboard.showStats);
+  settings.dashboard.statsShowOverall = settings.dashboard.statsShowOverall !== false;
   settings.dashboard.exposeToLan = Boolean(settings.dashboard.exposeToLan);
   settings.desktop.autostart = Boolean(settings.desktop.autostart);
   settings.desktop.alwaysOnTop = Boolean(settings.desktop.alwaysOnTop);

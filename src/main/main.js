@@ -6,12 +6,14 @@ const { InstallationManager } = require('./installation-manager');
 const { SettingsRepository } = require('./settings-repository');
 const { ThemeRepository } = require('./theme-repository');
 const { StatusPoller } = require('./status-poller');
+const { StatsRepository } = require('./stats-repository');
 const { WebServer } = require('./web-server');
 
 let mainWindow;
 let settingsRepository;
 let themeRepository;
 let poller;
+let statsRepository;
 let webServer;
 let installationManager;
 let installationStarting = false;
@@ -191,7 +193,8 @@ async function initialize() {
   installationManager = new InstallationManager(app);
   settingsRepository = new SettingsRepository(app.getPath('userData'));
   themeRepository = new ThemeRepository(app.getPath('userData'));
-  poller = new StatusPoller(settingsRepository);
+  statsRepository = new StatsRepository(app.getPath('userData'));
+  poller = new StatusPoller(settingsRepository, statsRepository);
   webServer = new WebServer({
     rendererDirectory: path.join(__dirname, '..', 'renderer'),
     settingsRepository,

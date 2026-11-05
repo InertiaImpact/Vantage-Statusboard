@@ -4,9 +4,10 @@ const { EventEmitter } = require('node:events');
 const { VantageClient } = require('./vantage-client');
 
 class StatusPoller extends EventEmitter {
-  constructor(settingsRepository) {
+  constructor(settingsRepository, statsRepository) {
     super();
     this.settingsRepository = settingsRepository;
+    this.statsRepository = statsRepository;
     this.timer = null;
     this.inFlight = null;
     this.completedMetricsCache = new Map();
@@ -15,6 +16,7 @@ class StatusPoller extends EventEmitter {
       fetchedAt: null,
       jobs: [],
       workflowOptions: [],
+      stats: { startedAt: null, groups: [] },
       warnings: [],
       error: null
     };
@@ -36,6 +38,18 @@ class StatusPoller extends EventEmitter {
     return structuredClone(this.status);
   }
 
+  resetStats() {
+    this.statsRepository.reset();
+    const dashboard = this.settingsRepository.get().dashboard;
+    this.status.stats = this.statsRepository.update(
+      this.status.jobs,
+      dashboard,
+      this.status.workflowOptions
+    );
+    this.emit('status', this.get());
+    return this.get();
+  }
+
   async refresh() {
     if (this.inFlight) return this.inFlight;
     this.inFlight = this.#performRefresh();
@@ -52,6 +66,11 @@ class StatusPoller extends EventEmitter {
       this.status = await new VantageClient(settings.vantage, {
         completedMetricsCache: this.completedMetricsCache
       }).getStatus(settings.dashboard);
+      this.status.stats = this.statsRepository.update(
+        this.status.jobs,
+        settings.dashboard,
+        this.status.workflowOptions
+      );
       this.status.error = null;
     } catch (error) {
       this.status = {

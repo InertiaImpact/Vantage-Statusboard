@@ -12,8 +12,10 @@
   <header class="app-bar">
     <div class="drag-region brand-block">
       <div class="brand-mark" aria-hidden="true">V</div>
-      <h1>Vantage Workflow Status</h1>
+      <div class="brand-title"><h1>Vantage Workflow Status</h1><span class="version-tag" id="versionTag">v—</span></div>
     </div>
+
+    <section class="topbar-stats" id="topbarStats" aria-label="Completed job statistics" aria-hidden="true"></section>
 
     <div class="app-status" id="connectionState" data-state="loading">
       <span class="state-dot" aria-hidden="true"></span>
@@ -92,6 +94,15 @@
         <label class="field span-two"><span>Search filter</span><input id="searchInput" placeholder="Filename or workflow"></label>
         <label class="field span-two"><span>Hide failed jobs after</span><div class="suffix-input"><input id="failedJobExpiryInput" type="number" min="0.25" max="168" step="0.25"><span>hr</span></div></label>
         <label class="switch-row"><input id="summaryInput" type="checkbox"><span><strong>Show summary counters</strong><small>Display the in-progress, waiting, attention, and shown totals above the job list.</small></span></label>
+        <label class="switch-row"><input id="statsInput" type="checkbox"><span><strong>Show completed-job stats in top bar</strong><small>Track completed jobs locally and show hourly, daily, 24-hour, and all-time totals.</small></span></label>
+        <div class="stats-settings span-two" id="statsSettings">
+          <label class="switch-row nested-switch"><input id="statsOverallInput" type="checkbox"><span><strong>Include overall totals</strong><small>Count completed jobs from every workflow.</small></span></label>
+          <div class="field"><span>Workflow totals</span><details class="workflow-picker" id="statsWorkflowPicker"><summary><span id="statsWorkflowSummary">No workflow totals</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5H7Z"/></svg></summary><div class="workflow-menu"><div class="workflow-menu-header"><span>Select up to two</span><button id="statsWorkflowClearButton" type="button">Clear</button></div><div class="workflow-options" id="statsWorkflowOptions"></div></div></details></div>
+          <details class="stats-maintenance">
+            <summary>Statistics maintenance</summary>
+            <div class="stats-reset-row"><span><strong>Reset tracked totals</strong><small>Clear all workflow history and restart the Since date.</small></span><button class="secondary-button danger-button" id="resetStatsButton" type="button">Reset totals</button></div>
+          </details>
+        </div>
       </section>
 
       <section class="settings-section">

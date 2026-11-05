@@ -5,6 +5,7 @@ const UI_SCALE_MIN = 80;
 const UI_SCALE_MAX = 130;
 const UI_SCALE_STEP = 5;
 const state = {
+  version: '',
   settings: null,
   themes: [],
   status: null,
@@ -65,6 +66,11 @@ function issueExpired(job, expiryMinutes, now = Date.now()) {
 function formatClock(value) {
   const date = parseDate(value);
   return date ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
+}
+
+function formatStatsDate(value) {
+  const date = parseDate(value);
+  return date ? date.toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : 'tracking start';
 }
 
 function formatDuration(value) {
@@ -203,6 +209,7 @@ function visibleJobs() {
 function renderStatus() {
   const status = state.status;
   if (!status) return;
+  renderTopbarStats();
   byId('summaryGrid').hidden = !state.settings.dashboard.showSummary;
   document.body.classList.toggle('show-summary', state.settings.dashboard.showSummary);
   const jobs = visibleJobs();
@@ -236,6 +243,36 @@ function renderStatus() {
     return;
   }
   byId('jobList').innerHTML = jobs.map(renderJob).join('');
+}
+
+function renderTopbarStats() {
+  const container = byId('topbarStats');
+  const enabled = Boolean(state.settings?.dashboard.showStats);
+  container.classList.toggle('is-visible', enabled);
+  container.setAttribute('aria-hidden', String(!enabled));
+  if (!enabled) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const stats = state.status?.stats;
+  const groups = stats?.groups || [];
+  if (!stats?.startedAt || !groups.length) {
+    container.innerHTML = '<div class="stats-empty"><strong>Completed job stats</strong><span>Tracking begins on the next refresh</span></div>';
+    return;
+  }
+
+  const sinceLabel = `Since ${formatStatsDate(stats.startedAt)}`;
+  const metrics = [
+    ['pastHour', 'Past hour'],
+    ['today', 'Today'],
+    ['past24Hours', 'Past 24h'],
+    ['total', sinceLabel]
+  ];
+  container.innerHTML = groups.slice(0, 3).map((group) => `<section class="stats-group" title="${escapeHtml(group.name)}">
+    <div class="stats-group-title">${escapeHtml(group.name)}</div>
+    <div class="stats-metrics">${metrics.map(([key, label]) => `<div class="stats-metric"><strong>${escapeHtml(group.counts?.[key] ?? 0)}</strong><span>${escapeHtml(label)}</span></div>`).join('')}</div>
+  </section>`).join('');
 }
 
 function renderJob(job) {
@@ -272,6 +309,8 @@ function populateSettings() {
   byId('viewInput').value = dashboard.view;
   byId('searchInput').value = dashboard.search;
   byId('summaryInput').checked = dashboard.showSummary;
+  byId('statsInput').checked = dashboard.showStats;
+  byId('statsOverallInput').checked = dashboard.statsShowOverall;
   byId('webPortInput').value = dashboard.webPort;
   byId('lanInput').checked = dashboard.exposeToLan;
   byId('themeInput').innerHTML = state.themes.map((theme) => `<option value="${escapeHtml(theme.id)}">${escapeHtml(theme.name)}${theme.builtIn ? '' : ' · custom'}</option>`).join('');
@@ -282,23 +321,40 @@ function populateSettings() {
   byId('timeoutInput').value = vantage.requestTimeoutSeconds;
   renderInstallationStatus();
   populateWorkflows();
+  populateStatsWorkflows();
   renderAuthFields();
   renderThemePreview();
 }
 
-function populateWorkflows() {
+function workflowOptionsWithSaved(selectedIds) {
   const workflows = state.status?.workflowOptions || [];
-  const selected = new Set(state.settings.dashboard.workflowIds);
   const availableIds = new Set(workflows.map((workflow) => workflow.id));
-  const options = [
+  return [
     ...workflows,
-    ...[...selected].filter((workflowId) => !availableIds.has(workflowId)).map((workflowId) => ({ id: workflowId, name: `Saved workflow · ${workflowId}` }))
+    ...[...selectedIds]
+      .filter((workflowId) => !availableIds.has(workflowId))
+      .map((workflowId) => ({ id: workflowId, name: `Saved workflow · ${workflowId}` }))
   ];
+}
+
+function populateWorkflows() {
+  const selected = new Set(state.settings.dashboard.workflowIds);
+  const options = workflowOptionsWithSaved(selected);
   byId('workflowOptions').innerHTML = options.length
     ? options.map((workflow) => `<label class="workflow-option"><input type="checkbox" value="${escapeHtml(workflow.id)}" ${selected.has(workflow.id) ? 'checked' : ''}><span>${escapeHtml(workflow.name)}</span></label>`).join('')
     : '<p class="workflow-empty">Workflows will appear after Vantage connects.</p>';
   byId('workflowPicker').open = false;
   updateWorkflowSummary();
+}
+
+function populateStatsWorkflows() {
+  const selected = new Set(state.settings.dashboard.statsWorkflowIds);
+  const options = workflowOptionsWithSaved(selected);
+  byId('statsWorkflowOptions').innerHTML = options.length
+    ? options.map((workflow) => `<label class="workflow-option"><input type="checkbox" value="${escapeHtml(workflow.id)}" ${selected.has(workflow.id) ? 'checked' : ''}><span>${escapeHtml(workflow.name)}</span></label>`).join('')
+    : '<p class="workflow-empty">Workflows will appear after Vantage connects.</p>';
+  byId('statsWorkflowPicker').open = false;
+  updateStatsWorkflowSummary();
 }
 
 function selectedWorkflowIds() {
@@ -317,6 +373,25 @@ function updateWorkflowSummary() {
     return;
   }
   byId('workflowSummary').textContent = `${selected.length} workflows selected`;
+}
+
+function selectedStatsWorkflowIds() {
+  return [...byId('statsWorkflowOptions').querySelectorAll('input:checked')].map((input) => input.value).slice(0, 2);
+}
+
+function updateStatsWorkflowSummary() {
+  const checked = [...byId('statsWorkflowOptions').querySelectorAll('input:checked')];
+  const atLimit = checked.length >= 2;
+  byId('statsWorkflowOptions').querySelectorAll('input').forEach((input) => {
+    input.disabled = atLimit && !input.checked;
+  });
+  if (!checked.length) {
+    byId('statsWorkflowSummary').textContent = 'No workflow totals';
+  } else if (checked.length === 1) {
+    byId('statsWorkflowSummary').textContent = checked[0].nextElementSibling?.textContent || '1 workflow selected';
+  } else {
+    byId('statsWorkflowSummary').textContent = '2 workflows selected';
+  }
 }
 
 function renderAuthFields() {
@@ -365,6 +440,9 @@ async function saveSettings(event) {
       view: byId('viewInput').value,
       search: byId('searchInput').value,
       showSummary: byId('summaryInput').checked,
+      showStats: byId('statsInput').checked,
+      statsShowOverall: byId('statsOverallInput').checked,
+      statsWorkflowIds: selectedStatsWorkflowIds(),
       themeId: byId('themeInput').value,
       uiScalePercent: Number(byId('scaleValue').dataset.percent),
       webPort: Number(byId('webPortInput').value),
@@ -439,6 +517,27 @@ async function refresh() {
   }
 }
 
+async function resetStats() {
+  if (!window.confirm('Reset all tracked job totals? This cannot be undone.')) return;
+  const button = byId('resetStatsButton');
+  button.disabled = true;
+  button.textContent = 'Resetting…';
+  try {
+    const response = await fetch(apiUrl('stats/reset'), { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Unable to reset tracked totals.');
+    state.status = result;
+    renderStatus();
+    showToast('Tracked totals reset. A new tracking period has started.');
+  } catch (error) {
+    byId('settingsError').hidden = false;
+    byId('settingsError').textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Reset totals';
+  }
+}
+
 async function readCachedStatus() {
   try {
     const response = await fetch(apiUrl('status'));
@@ -477,6 +576,7 @@ async function initialize() {
   document.body.classList.toggle('desktop', Boolean(window.desktopBridge?.isDesktop));
   const response = await fetch(apiUrl('bootstrap'));
   const bootstrap = await response.json();
+  state.version = bootstrap.version || '';
   state.settings = bootstrap.settings;
   state.themes = bootstrap.themes;
   state.status = bootstrap.status;
@@ -487,6 +587,7 @@ async function initialize() {
     alwaysOnTop: state.settings.desktop.alwaysOnTop,
     resizeLocked: state.settings.desktop.resizeLocked
   });
+  byId('versionTag').textContent = state.version ? `v${state.version}` : 'v—';
   applyTheme(bootstrap.activeTheme);
   applyUiScale(state.settings.dashboard.uiScalePercent);
   renderInstallationStatus();
@@ -508,13 +609,19 @@ byId('themeInput').addEventListener('change', renderThemePreview);
 byId('scaleDownButton').addEventListener('click', () => adjustScale(-1));
 byId('scaleUpButton').addEventListener('click', () => adjustScale(1));
 byId('workflowOptions').addEventListener('change', updateWorkflowSummary);
+byId('statsWorkflowOptions').addEventListener('change', updateStatsWorkflowSummary);
 byId('workflowAllButton').addEventListener('click', () => {
   byId('workflowOptions').querySelectorAll('input:checked').forEach((input) => { input.checked = false; });
   updateWorkflowSummary();
 });
+byId('statsWorkflowClearButton').addEventListener('click', () => {
+  byId('statsWorkflowOptions').querySelectorAll('input:checked').forEach((input) => { input.checked = false; });
+  updateStatsWorkflowSummary();
+});
 byId('themeFileInput').addEventListener('change', (event) => importTheme(event.target.files[0]));
 byId('installButton').addEventListener('click', installApplication);
 byId('refreshButton').addEventListener('click', refresh);
+byId('resetStatsButton').addEventListener('click', resetStats);
 byId('pinButton').addEventListener('click', async () => updateDesktopState(await window.desktopBridge.windowAction('toggle-pin')));
 byId('lockButton').addEventListener('click', async () => updateDesktopState(await window.desktopBridge.windowAction('toggle-lock')));
 byId('minimizeButton').addEventListener('click', () => window.desktopBridge.windowAction('minimize'));

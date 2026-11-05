@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { URL } = require('node:url');
+const packageJson = require('../../package.json');
 
 const CONTENT_TYPES = Object.freeze({
   '.css': 'text/css; charset=utf-8',
@@ -72,6 +73,11 @@ class WebServer {
         this.#json(response, 200, await this.poller.refresh());
         return;
       }
+      if (request.method === 'POST' && requestUrl.pathname === '/api/stats/reset') {
+        this.#requireLocalRequest(request);
+        this.#json(response, 200, this.poller.resetStats());
+        return;
+      }
       if (request.method === 'PUT' && requestUrl.pathname === '/api/settings') {
         this.#requireLocalRequest(request);
         const settings = this.settingsRepository.save(await this.#readJson(request));
@@ -101,6 +107,7 @@ class WebServer {
       themes: this.themeRepository.list(),
       activeTheme: this.themeRepository.get(settings.dashboard.themeId),
       status: this.poller.get(),
+      version: packageJson.version,
       desktop: Boolean(process.versions.electron)
     };
   }

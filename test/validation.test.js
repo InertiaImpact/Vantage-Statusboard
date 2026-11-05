@@ -52,6 +52,18 @@ test('keeps the optional summary hidden unless enabled', () => {
   assert.equal(validateSettings({ dashboard: { showSummary: true } }).dashboard.showSummary, true);
 });
 
+test('validates top-bar statistics settings and limits workflow totals to two', () => {
+  const settings = validateSettings({ dashboard: {
+    showStats: true,
+    statsShowOverall: false,
+    statsWorkflowIds: ['one', 'two', 'one', 'three', '', 'all']
+  } });
+  assert.equal(settings.dashboard.showStats, true);
+  assert.equal(settings.dashboard.statsShowOverall, false);
+  assert.deepEqual(settings.dashboard.statsWorkflowIds, ['one', 'two']);
+  assert.equal(validateSettings({ dashboard: {} }).dashboard.statsShowOverall, true);
+});
+
 test('normalizes multiple workflow selections and removes duplicates', () => {
   const settings = validateSettings({ dashboard: { workflowIds: ['one', 'two', 'one', '', 'all'] } });
   assert.deepEqual(settings.dashboard.workflowIds, ['one', 'two']);
